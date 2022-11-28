@@ -160,13 +160,13 @@ class _MyHomePageState extends State<MyHomePage> {
         _magnetometerValues?.map((double v) => v.toStringAsFixed(1)).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sensor Example'), actions: <Widget>[
+      appBar: AppBar(title: const Text('Senzori u flutteru'), actions: <Widget>[
         ElevatedButton(
             onPressed: _authenticateWithBiometrics,
             child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
               Text(_isAuthenticating
                   ? 'Cancel'
-                  : 'Authenticate: biometrics only'),
+                  : 'Otisak prsta'),
               const Icon(Icons.fingerprint)
             ]))
       ]),
