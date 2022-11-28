@@ -5,13 +5,13 @@
 // ignore_for_file: public_member_api_docs
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:environment_sensors/environment_sensors.dart';
-
-import 'snake.dart';
+import 'package:location/location.dart';
+import 'package:local_auth/local_auth.dart';
 
 void main() {
   runApp(const MyApp());
@@ -46,11 +46,11 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _humidityAvailable = false;
   bool _lightAvailable = false;
   bool _pressureAvailable = false;
-  bool _anyAvailable = false;
+  bool _serviceEnabled = false;
+  LocationData? _locationData = null;
+  PermissionStatus _permissionGranted = PermissionStatus.denied;
+
   final environmentSensors = EnvironmentSensors();
-  static const int _snakeRows = 20;
-  static const int _snakeColumns = 20;
-  static const double _snakeCellSize = 10.0;
 
   List<double>? _accelerometerValues;
   List<double>? _userAccelerometerValues;
@@ -73,16 +73,82 @@ class _MyHomePageState extends State<MyHomePage> {
     pressureAvailable =
         await environmentSensors.getSensorAvailable(SensorType.Pressure);
 
+    Location location = new Location();
+
+    bool serviceEnabled;
+    PermissionStatus permissionGranted = PermissionStatus.granted;
+    LocationData? locationData;
+
+    serviceEnabled = await location.serviceEnabled();
+    if (!serviceEnabled) {
+      serviceEnabled = await location.requestService();
+    }
+
+    permissionGranted = await location.hasPermission();
+    if (permissionGranted == PermissionStatus.denied) {
+      permissionGranted = await location.requestPermission();
+      if (permissionGranted == PermissionStatus.granted) {
+        locationData = await location.getLocation();
+      }
+    } else {
+      locationData = await location.getLocation();
+    }
+
     setState(() {
       _tempAvailable = tempAvailable;
       _humidityAvailable = humidityAvailable;
       _lightAvailable = lightAvailable;
       _pressureAvailable = pressureAvailable;
+      _permissionGranted = permissionGranted;
+      _serviceEnabled = serviceEnabled;
+      _locationData = locationData;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    LocalAuthentication auth = LocalAuthentication();
+
+    String _authorized = 'Not Authorized';
+    bool _isAuthenticating = false;
+
+    Future<void> _authenticateWithBiometrics() async {
+      bool authenticated = false;
+      try {
+        setState(() {
+          _isAuthenticating = true;
+          _authorized = 'Authenticating';
+        });
+        authenticated = await auth.authenticate(
+          localizedReason:
+              'Scan your fingerprint (or face or whatever) to authenticate',
+          options: const AuthenticationOptions(
+            stickyAuth: true,
+            biometricOnly: true,
+          ),
+        );
+        setState(() {
+          _isAuthenticating = false;
+          _authorized = 'Authenticating';
+        });
+      } on PlatformException catch (e) {
+        print(e);
+        setState(() {
+          _isAuthenticating = false;
+          _authorized = 'Error - ${e.message}';
+        });
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+
+      final String message = authenticated ? 'Authorized' : 'Not Authorized';
+      setState(() {
+        _authorized = message;
+      });
+    }
+
     final accelerometer =
         _accelerometerValues?.map((double v) => v.toStringAsFixed(1)).toList();
     final gyroscope =
@@ -94,28 +160,19 @@ class _MyHomePageState extends State<MyHomePage> {
         _magnetometerValues?.map((double v) => v.toStringAsFixed(1)).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sensor Example'),
-      ),
+      appBar: AppBar(title: const Text('Sensor Example'), actions: <Widget>[
+        ElevatedButton(
+            onPressed: _authenticateWithBiometrics,
+            child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+              Text(_isAuthenticating
+                  ? 'Cancel'
+                  : 'Authenticate: biometrics only'),
+              const Icon(Icons.fingerprint)
+            ]))
+      ]),
       body: Column(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: <Widget>[
-          /*Center(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(width: 1.0, color: Colors.black38),
-              ),
-              child: SizedBox(
-                height: _snakeRows * _snakeCellSize,
-                width: _snakeColumns * _snakeCellSize,
-                child: Snake(
-                  rows: _snakeRows,
-                  columns: _snakeColumns,
-                  cellSize: _snakeCellSize,
-                ),
-              ),
-            ),
-          ),*/
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
@@ -156,7 +213,8 @@ class _MyHomePageState extends State<MyHomePage> {
               ? StreamBuilder<double>(
                   stream: environmentSensors.humidity,
                   builder: (context, snapshot) {
-                    if (!snapshot.hasData) return CircularProgressIndicator();
+                    if (!snapshot.hasData)
+                      return const CircularProgressIndicator();
                     return Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Row(
@@ -166,12 +224,13 @@ class _MyHomePageState extends State<MyHomePage> {
                                   'Humidity: ${snapshot.data!.toStringAsFixed(2)}%')
                             ]));
                   })
-              : Text('No relative humidity sensor found'),
+              : const Text('No relative humidity sensor found'),
           (_humidityAvailable)
               ? StreamBuilder<double>(
                   stream: environmentSensors.temperature,
                   builder: (context, snapshot) {
-                    if (!snapshot.hasData) return CircularProgressIndicator();
+                    if (!snapshot.hasData)
+                      return const CircularProgressIndicator();
                     return Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Row(
@@ -181,12 +240,13 @@ class _MyHomePageState extends State<MyHomePage> {
                                   'Temperature: ${snapshot.data!.toStringAsFixed(2)}')
                             ]));
                   })
-              : Text('No temperature sensor found'),
+              : const Text('No temperature sensor found'),
           (_lightAvailable)
               ? StreamBuilder<double>(
                   stream: environmentSensors.light,
                   builder: (context, snapshot) {
-                    if (!snapshot.hasData) return CircularProgressIndicator();
+                    if (!snapshot.hasData)
+                      return const CircularProgressIndicator();
                     return Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Row(
@@ -196,12 +256,13 @@ class _MyHomePageState extends State<MyHomePage> {
                                   'Light: ${snapshot.data!.toStringAsFixed(2)}')
                             ]));
                   })
-              : Text('No light sensor found'),
+              : const Text('No light sensor found'),
           (_pressureAvailable)
               ? StreamBuilder<double>(
                   stream: environmentSensors.pressure,
                   builder: (context, snapshot) {
-                    if (!snapshot.hasData) return CircularProgressIndicator();
+                    if (!snapshot.hasData)
+                      return const CircularProgressIndicator();
                     return Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Row(
@@ -211,7 +272,16 @@ class _MyHomePageState extends State<MyHomePage> {
                                   'Pressure: ${snapshot.data!.toStringAsFixed(2)}')
                             ]));
                   })
-              : Text('No pressure sensure found'),
+              : const Text('No pressure sensor found'),
+          (_serviceEnabled == true &&
+                  _permissionGranted == PermissionStatus.granted)
+              ? Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'Lokacija: longitude: ${_locationData?.longitude}  latitude: ${_locationData?.latitude}  speed: ${_locationData?.speed}, altittude: ${_locationData?.altitude}',
+                    overflow: TextOverflow.visible,
+                  ))
+              : const Text('Lokacija nije dozvoljena'),
           //ElevatedButton(onPressed: initPlatformState , child: Text('Get'))
         ],
       ),
