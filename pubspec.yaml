@@ -34,6 +34,8 @@ dependencies:
   sensors_plus: ^2.0.1
   snake: ^0.1.0
   environment_sensors: ^0.1.1
+  location: ^4.2.0
+  local_auth: ^2.1.2
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
